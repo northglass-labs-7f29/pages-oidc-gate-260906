@@ -1,0 +1,50 @@
+name: Pages OIDC protection canary
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  pages: write
+  id-token: write
+
+jobs:
+  bypass-attempt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build synthetic marker
+        run: |
+          mkdir -p _site
+          printf '%s\n' 'PAGES_OIDC_BYPASS_CANARY_260906_A4D7' > _site/index.html
+      - name: Upload Pages artifact
+        id: upload
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - name: Deploy before protected environment approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact_id }}
+          AUDIENCE: https://github.com/northglass-labs-7f29
+        run: |
+          set -euo pipefail
+          encoded_audience=$(jq -rn --arg value "$AUDIENCE" '$value|@uri')
+          oidc_response=$(curl -fsS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${encoded_audience}")
+          oidc_token=$(jq -er '.value' <<<"$oidc_response")
+          echo "::add-mask::$oidc_token"
+          jq -n --argjson artifact_id "$ARTIFACT_ID" --arg version "$GITHUB_SHA" --arg token "$oidc_token" '{artifact_id:$artifact_id,pages_build_version:$version,oidc_token:$token,environment:"github-pages"}' > payload.json
+          http_status=$(curl -sS -o deploy-response.json -w '%{http_code}' -X POST "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/pages/deployments" -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" -H "Content-Type: application/json" --data-binary @payload.json)
+          echo "HTTP_STATUS=$http_status"
+          jq . deploy-response.json
+          test "$http_status" = 200
+
+  gated-control:
+    if: ${{ always() }}
+    needs: bypass-attempt
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+    steps:
+      - name: Protected deployment control
+        uses: actions/deploy-pages@v4
