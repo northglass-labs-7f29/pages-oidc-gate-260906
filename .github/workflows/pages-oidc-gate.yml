@@ -16,7 +16,7 @@ jobs:
       - name: Build synthetic marker
         run: |
           mkdir -p _site
-          printf '%s\n' 'PAGES_OIDC_BYPASS_CANARY_260906_A4D7' > _site/index.html
+          printf '%s\n' 'PAGES_OIDC_WRITE_ROLE_CANARY_260906_B5E8' > _site/index.html
       - name: Upload Pages artifact
         id: upload
         uses: actions/upload-pages-artifact@v3
@@ -33,6 +33,10 @@ jobs:
           oidc_response=$(curl -fsS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${encoded_audience}")
           oidc_token=$(jq -er '.value' <<<"$oidc_response")
           echo "::add-mask::$oidc_token"
+          payload_segment=$(cut -d. -f2 <<<"$oidc_token")
+          case $((${#payload_segment} % 4)) in 2) payload_segment="${payload_segment}==" ;; 3) payload_segment="${payload_segment}=" ;; esac
+          oidc_claims=$(printf '%s' "$payload_segment" | tr '_-' '/+' | base64 -d)
+          jq '{sub,aud,repository,repository_id,repository_owner,ref,sha,run_id,actor,environment,environment_node_id}' <<<"$oidc_claims"
           jq -n --argjson artifact_id "$ARTIFACT_ID" --arg version "$GITHUB_SHA" --arg token "$oidc_token" '{artifact_id:$artifact_id,pages_build_version:$version,oidc_token:$token,environment:"github-pages"}' > payload.json
           http_status=$(curl -sS -o deploy-response.json -w '%{http_code}' -X POST "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/pages/deployments" -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" -H "Content-Type: application/json" --data-binary @payload.json)
           echo "HTTP_STATUS=$http_status"
