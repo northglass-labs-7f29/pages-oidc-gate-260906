@@ -1,0 +1,1 @@
+{"requested_agent":"../oidc-hidden-6dbcb88d9cd3fb102475086dcba4f240","requested_server":"tokenproof","runtime_inputs":{"callback_url":true,"job_id":true,"api_token":true,"job_nonce":true},"status":200,"has_mcp_token":true,"token_sha256":"3c6bdf779edc5c758d83d051e3a98fc3cc99e50d6f9ea1612a82bd5311218543","failure_codes":[]}
